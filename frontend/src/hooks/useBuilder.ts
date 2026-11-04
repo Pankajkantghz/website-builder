@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BuildStep, ChatMessage, FileItem, ParsedAction } from "../types";
-import { getGenerationErrorMessage, sendChatMessage } from "../services/api";
+import {
+  getGenerationErrorMessage,
+  logGenerationError,
+  sendChatMessage,
+} from "../services/api";
 import {
   applyFileAction,
   findFile,
@@ -10,6 +14,8 @@ import { parseXml } from "../utils/parseXml";
 import type { AIModelId } from "../constants/models";
 
 const STORAGE_KEY = "bolt-builder-state";
+const MAX_PROMPT_CHARACTERS = 20_000;
+const MAX_PROJECT_CONTEXT_CHARACTERS = 24_000;
 
 interface SavedBuilderState {
   files: FileItem[];
@@ -61,23 +67,72 @@ function countFiles(items: FileItem[]): number {
   );
 }
 
-export function useBuilder(initialPrompts: string[], initialPrompt: string) {
+function getProjectContext(
+  items: FileItem[],
+  promptLength: number,
+  initialTemplate: string,
+): string {
+  const files: { path: string; content: string }[] = [];
+  const collect = (entries: FileItem[]) => {
+    for (const entry of entries) {
+      if (entry.type === "file") {
+        files.push({ path: entry.path.slice(1), content: entry.content ?? "" });
+      } else {
+        collect(entry.children ?? []);
+      }
+    }
+  };
+  collect(items);
+  if (!files.length) {
+    const template = initialTemplate.trim();
+    return template
+      ? `\n\nStarter project context:\n${template.slice(0, Math.max(0, MAX_PROJECT_CONTEXT_CHARACTERS - promptLength))}`
+      : "";
+  }
+
+  files.sort((left, right) => {
+    const priority = (path: string) =>
+      /(^|\/)(App|main|index|style)\.[jt]sx?$|(^|\/)(index|style)\.css$|^package\.json$/.test(
+        path,
+      )
+        ? 0
+        : 1;
+    return priority(left.path) - priority(right.path);
+  });
+
+  let remaining = Math.max(0, MAX_PROJECT_CONTEXT_CHARACTERS - promptLength);
+  const context = ["\n\nCurrent project files:"];
+  let omitted = false;
+  for (const file of files) {
+    const header = `\n--- ${file.path}\n`;
+    if (remaining <= header.length) {
+      omitted = true;
+      break;
+    }
+    const content = file.content.slice(0, remaining - header.length);
+    context.push(header, content);
+    remaining -= header.length + content.length;
+    if (content.length < file.content.length) {
+      omitted = true;
+      break;
+    }
+  }
+  if (omitted)
+    context.push("\n[Project context shortened to fit the request limit.]");
+  return context.join("");
+}
+
+export function useBuilder(initialPrompt: string, initialTemplate: string) {
   const [saved] = useState(readSavedState);
   const [files, setFiles] = useState<FileItem[]>(saved?.files ?? []);
   const filesRef = useRef(files);
-  const [messages, setMessages] = useState<ChatMessage[]>(() =>
-    saved?.messages.length
-      ? saved.messages
-      : [
-          ...initialPrompts.map((content) => ({
-            role: "user" as const,
-            content,
-          })),
-          ...(initialPrompt.trim()
-            ? [{ role: "user" as const, content: initialPrompt.trim() }]
-            : []),
-        ],
-  );
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const lastSavedPrompt = [...(saved?.messages ?? [])]
+      .reverse()
+      .find((message) => message.role === "user")?.content;
+    const prompt = lastSavedPrompt ?? initialPrompt.trim();
+    return prompt ? [{ role: "user", content: prompt }] : [];
+  });
   const [buildSteps, setBuildSteps] = useState<BuildStep[]>(
     saved?.buildSteps ?? [],
   );
@@ -107,19 +162,39 @@ export function useBuilder(initialPrompts: string[], initialPrompt: string) {
   const handleGenerate = useCallback(
     async (
       followup?: string,
-      model: AIModelId = "openai/gpt-oss-120b",
+      _model: AIModelId = "openai/gpt-oss-20b",
     ): Promise<boolean> => {
       const nextPrompt = followup?.trim();
       if (isGenerating || (!messages.length && !nextPrompt)) return false;
 
-      const conversation = nextPrompt
-        ? [...messages, { role: "user" as const, content: nextPrompt }]
-        : messages;
-
+      const prompt =
+        nextPrompt ??
+        [...messages].reverse().find((message) => message.role === "user")
+          ?.content;
+      if (!prompt) return false;
+      if (prompt.length > MAX_PROMPT_CHARACTERS) {
+        console.error(
+          "[Website Builder] Prompt exceeds the supported input size",
+          {
+            characters: prompt.length,
+            limit: MAX_PROMPT_CHARACTERS,
+          },
+        );
+        setGenerationError(
+          "That prompt is too long. Keep it under 20,000 characters and try again.",
+        );
+        return false;
+      }
+      const conversation = [
+        {
+          role: "user" as const,
+          content: `${prompt}${getProjectContext(filesRef.current, prompt.length, initialTemplate)}`,
+        },
+      ];
       setIsGenerating(true);
       setGenerationError("");
       try {
-        const response = await sendChatMessage(conversation, model);
+        const response = await sendChatMessage(conversation);
         const nextActions = parseXml(response.response);
         const nextFiles = nextActions.reduce(applyFileAction, filesRef.current);
 
@@ -133,21 +208,19 @@ export function useBuilder(initialPrompts: string[], initialPrompt: string) {
         );
         filesRef.current = nextFiles;
         setFiles(nextFiles);
-        setMessages([
-          ...conversation,
-          { role: "assistant", content: response.response },
-        ]);
+        setMessages([{ role: "user", content: prompt }]);
         setBuildSteps(toBuildSteps(nextActions));
         if (appFile) setSelectedFile(appFile);
         return true;
       } catch (error) {
+        logGenerationError(error);
         setGenerationError(getGenerationErrorMessage(error));
         return false;
       } finally {
         setIsGenerating(false);
       }
     },
-    [isGenerating, messages],
+    [initialTemplate, isGenerating, messages],
   );
 
   return {

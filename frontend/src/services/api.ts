@@ -1,6 +1,5 @@
 import axios from "axios";
 import type { ChatMessage, ChatResponse, TemplateResponse } from "../types";
-import type { AIModelId } from "../constants/models";
 
 const api = axios.create({
   // Set VITE_API_URL to the deployed backend URL. Keep localhost as the dev default.
@@ -12,17 +11,15 @@ const api = axios.create({
 
 export const generateTemplate = async (
   prompt: string,
-  model: AIModelId,
 ): Promise<TemplateResponse> => {
-  const response = await api.post("/template", { prompt, model });
+  const response = await api.post("/template", { prompt });
   return response.data;
 };
 
 export const sendChatMessage = async (
   messages: ChatMessage[],
-  model: AIModelId,
 ): Promise<ChatResponse> => {
-  const response = await api.post<ChatResponse>("/chat", { messages, model });
+  const response = await api.post<ChatResponse>("/chat", { messages });
   return response.data;
 };
 
@@ -34,7 +31,7 @@ export function getGenerationErrorMessage(error: unknown): string {
     ? String(error.response?.data?.code ?? "")
     : "";
   if (responseCode === "MODEL_QUOTA_EXHAUSTED") {
-    return "No response was generated because all available AI models ran out of tokens or hit their rate limits. Please try again after the quota resets, or use a model with available tokens.";
+    return "No response was generated because the configured AI model ran out of tokens or hit its rate limit. Please try again after the quota resets.";
   }
   const detail = `${responseMessage} ${error instanceof Error ? error.message : ""}`;
   const tokenLimitReached =
@@ -46,4 +43,19 @@ export function getGenerationErrorMessage(error: unknown): string {
   }
 
   return responseMessage || "Website generation failed. Check that the server is running and try again.";
+}
+
+export function logGenerationError(error: unknown): void {
+  if (axios.isAxiosError(error)) {
+    console.error("[Website Builder] Generation request failed", {
+      status: error.response?.status,
+      code: error.response?.data?.code,
+      message: error.response?.data?.message ?? error.message,
+    });
+    return;
+  }
+
+  console.error("[Website Builder] Generation failed", {
+    message: error instanceof Error ? error.message : "Unknown error",
+  });
 }

@@ -14,10 +14,21 @@ const CodeEditor = ({ file }: CodeEditorProps) => {
     );
   }
 
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  const language =
+    extension === "tsx" ? "typescript" :
+    extension === "ts" ? "typescript" :
+    extension === "jsx" ? "javascript" :
+    extension === "js" ? "javascript" :
+    extension === "json" ? "json" :
+    extension === "css" ? "css" :
+    extension === "html" ? "html" :
+    extension === "md" ? "markdown" : "plaintext";
+
   return (
     <Editor
       height="100%"
-      defaultLanguage="typescript"
+      language={language}
       theme="vs-dark"
       value={file.content ?? ""}
       options={{

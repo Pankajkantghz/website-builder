@@ -32,7 +32,13 @@ function inferDependencies(files: Map<string, string>): Record<string, string> {
     if (!/\.[cm]?[jt]sx?$/.test(path)) continue;
 
     for (const [, specifier] of contents.matchAll(importPattern)) {
-      if (specifier.startsWith(".") || specifier.startsWith("/") || specifier.startsWith("node:")) continue;
+      if (
+        specifier.startsWith(".") ||
+        specifier.startsWith("/") ||
+        specifier.startsWith("node:") ||
+        specifier.startsWith("@/") ||
+        specifier.startsWith("~/")
+      ) continue;
       const packageName = specifier.startsWith("@")
         ? specifier.split("/").slice(0, 2).join("/")
         : specifier.split("/")[0];
@@ -90,6 +96,23 @@ function createPackageJson(files: Map<string, string>): string {
     null,
     2,
   );
+}
+
+export function createProjectPackageJson(items: FileItem[]): string {
+  return createPackageJson(collectProjectFiles(items));
+}
+
+export function getProjectDependencySignature(items: FileItem[]): string {
+  const packageJson = JSON.parse(createProjectPackageJson(items)) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  const sortEntries = (dependencies: Record<string, string> = {}) =>
+    Object.fromEntries(Object.entries(dependencies).sort(([left], [right]) => left.localeCompare(right)));
+  return JSON.stringify([
+    sortEntries(packageJson.dependencies),
+    sortEntries(packageJson.devDependencies),
+  ]);
 }
 
 /** Adds the minimum files needed to start a generated React app in Vite. */
@@ -214,8 +237,19 @@ export async function writeProjectTree(
   }
 }
 
-export async function installDependencies(container: WebContainer): Promise<number> {
+export async function installDependencies(
+  container: WebContainer,
+): Promise<{ exitCode: number; output: string }> {
   const process = await container.spawn("npm", ["install"]);
-  void process.output.pipeTo(new WritableStream({ write() {} }));
-  return process.exit;
+  let output = "";
+  const outputDone = process.output.pipeTo(
+    new WritableStream({
+      write(chunk) {
+        output = `${output}${chunk}`.slice(-8_000);
+      },
+    }),
+  );
+  const exitCode = await process.exit;
+  await outputDone;
+  return { exitCode, output: output.trim() };
 }

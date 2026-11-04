@@ -8,14 +8,13 @@ An AI-assisted website builder built with React, TypeScript, Express, Groq, and 
 
 ## ✨ Features
 
-- Choose a Groq text-generation model before building.
-- Automatically try the other configured models if the selected model hits a quota or rate limit.
+- Use Groq's `openai/gpt-oss-20b` model for fast generation.
 - Generate project files from a natural-language prompt.
 - Refine the project with follow-up prompts.
 - Browse generated files and inspect them in the code editor.
 - Run supported generated projects in a WebContainer preview.
-- Sync file edits to the running preview and reload it without reinstalling dependencies.
-- Preserve generated files, build steps, selected file, and conversation in the current browser tab session.
+- Sync file edits to the running preview and reinstall dependencies when imports change.
+- Preserve generated files, build steps, selected file, and latest prompt in the current browser tab session.
 
 ---
 
@@ -37,7 +36,7 @@ An AI-assisted website builder built with React, TypeScript, Express, Groq, and 
 
 ```text
 Browser
-  ├── Home: prompt and model selection
+  ├── Home: prompt entry
   ├── Builder: build steps, files, code editor, preview
   ├── API client ───────────────► Express routes
   └── WebContainer: generated project runtime
@@ -46,46 +45,38 @@ Browser
                                     └── /chat ─────► generate or update project files
                                                          │
                                                          ▼
-                                              Groq model fallback service
+                                              Groq model service
 ```
 
 ### Backend Structure
 
 | Path | Responsibility |
 |---|---|
-| `backend/src/index.ts` | Loads environment variables and starts the HTTP server. |
-| `backend/src/app.ts` | Configures Express, CORS, JSON parsing, and routes. |
-| `backend/src/routes/template.ts` | Validates template requests, selects a starter, and handles model errors. |
-| `backend/src/routes/chat.ts` | Validates chat requests and returns generated project changes. |
-| `backend/src/services/modelFallback.ts` | Tries configured Groq models and detects quota or rate-limit errors. |
+| `backend/src/index.ts` | Configures Express, CORS, request limits, and starts the server. |
+| `backend/src/routes/template.ts` | Validates template requests and selects a starter. |
+| `backend/src/routes/chat.ts` | Validates chat requests and generates project changes. |
+| `backend/src/errors.ts` | Maps Groq errors to consistent API responses. |
+| `backend/src/prompts.ts` | Defines the system prompt used for website generation. |
+| `backend/src/constants.ts` | Defines workspace and formatting constants for prompts. |
+| `backend/src/stripindents.ts` | Removes indentation from prompt template strings. |
 | `backend/src/defaults/` | Starter prompts used by template selection. |
-| `backend/src/prompt.ts` | Instructions for generating and updating projects. |
 
 ### Request Flow
 
-1. The home page sends the prompt and selected model to `POST /template`.
+1. The home page sends the prompt to `POST /template`.
 2. The backend classifies the request and returns starter prompts.
-3. The builder sends the prompt history and selected model to `POST /chat`.
+3. The first build sends the latest prompt with its starter context; refinements send the new instruction and a size-limited snapshot of current project files to `POST /chat`.
 4. The backend parses the model response into project file actions on the frontend.
 5. The preview mounts the files in a WebContainer, installs dependencies, and starts the generated development server.
-6. Follow-up prompts send the conversation and selected model to `/chat`; file changes sync to the running preview.
+6. Follow-up prompts send only the new instruction plus current project context to `/chat`; file changes sync to the running preview.
 
 ---
 
-## 🤖 Model Selection and Quota Fallback
+## 🤖 Model
 
-The model selector appears on the home page and in the builder panel. The selected model is tried first. If Groq returns a quota or rate-limit error, the backend tries the remaining configured models in order, wrapping around to earlier models if needed.
+The backend uses `openai/gpt-oss-20b` for template selection and website generation. If Groq reports a quota or rate-limit error, the backend returns HTTP `429` with code `MODEL_QUOTA_EXHAUSTED`.
 
-Configured models:
-
-1. `openai/gpt-oss-120b`
-2. `openai/gpt-oss-20b`
-3. `qwen/qwen3.8-27b`
-4. `allam-2-7b`
-
-The model list is in `backend/src/services/modelFallback.ts`; the frontend selector labels are in `frontend/src/constants/models.ts`. If all models are quota-limited, the backend returns HTTP `429` with code `MODEL_QUOTA_EXHAUSTED`, and the UI tells the user the available model tokens have run out. Fallback cannot bypass account-level quotas.
-
-> **Response quality:** This project uses free model availability. Response quality can vary, and a model may occasionally return a low-quality or incomplete result. If that happens, ask the builder to continue the response or try the request again with another model.
+> **Response quality:** This project uses a free model. Responses can be inaccurate or incomplete. Review generated code, and ask the builder to refine or continue a response when needed.
 
 ---
 
@@ -99,12 +90,10 @@ bolt-app/
 │   │   ├── routes/
 │   │   │   ├── chat.ts
 │   │   │   └── template.ts
-│   │   ├── services/
-│   │   │   └── modelFallback.ts
-│   │   ├── app.ts
-│   │   ├── constants.ts
 │   │   ├── index.ts
-│   │   ├── prompt.ts
+│   │   ├── errors.ts
+│   │   ├── prompts.ts
+│   │   ├── constants.ts
 │   │   └── stripindents.ts
 │   └── package.json
 └── frontend/
@@ -125,18 +114,19 @@ bolt-app/
 
 The frontend calls the backend at `http://localhost:3000` by default. Set `VITE_API_URL` in the frontend build environment to the deployed backend URL.
 
+API errors include a short `code` and user-facing `message` so the frontend can show a useful error.
+
 ### `POST /template`
 
 Request:
 
 ```json
 {
-  "prompt": "A portfolio for a product designer",
-  "model": "openai/gpt-oss-120b"
+  "prompt": "A portfolio for a product designer"
 }
 ```
 
-Returns the prompts used to initialize a builder session. The `model` field is optional; the backend defaults to the configured model order.
+Returns the prompts used to initialize a builder session. The backend uses the configured model.
 
 ### `POST /chat`
 
@@ -146,8 +136,7 @@ Request:
 {
   "messages": [
     { "role": "user", "content": "Create a responsive landing page" }
-  ],
-  "model": "openai/gpt-oss-120b"
+  ]
 }
 ```
 
@@ -159,7 +148,7 @@ Returns the generated response containing the project file actions. The frontend
 
 ### Prerequisites
 
-- Node.js and npm
+- Node.js 22 or newer and npm
 - A Groq API key
 - A browser supported by WebContainers
 
@@ -200,12 +189,12 @@ Open the Vite URL shown in the terminal, usually `http://localhost:5173`.
 - The backend reads `GROQ_API_KEY` from `backend/.env`. Keep it out of frontend variables and source control.
 - The frontend API URL defaults to `http://localhost:3000`; configure `VITE_API_URL` for a deployed backend.
 - The backend CORS policy defaults to `http://localhost:5173`; configure `CORS_ORIGINS` as a comma-separated list of allowed origins in deployment.
-- The backend limits requests to 20 per IP per minute, template prompts to 20,000 characters, and chat history to 100,000 total characters. The in-memory rate limiter is per process; multi-instance deployments should use a shared rate-limit store.
+- The backend allows 20 requests per IP per minute, limits template prompts to 20,000 characters, chat content to 100,000 characters, and JSON bodies to 256 KB. The in-memory rate limiter is per process; multi-instance deployments should use a shared rate-limit store.
 - The backend listens on port `3000` in `backend/src/index.ts`.
 - The Vite configuration sets COOP/COEP headers required by WebContainers. A deployed frontend host must provide compatible cross-origin isolation headers.
 - Generated projects run in a browser-based Node.js environment; packages that need native binaries may not work.
-- Preview **Refresh** reloads the current iframe. It does not reinstall dependencies. Dependency installation happens when the preview runtime starts.
-- Builder files, build steps, selected file, and conversation are saved in `sessionStorage` for the current browser tab session.
+- Preview **Refresh** reloads the current iframe. Dependency installation happens when the preview starts and again when generated dependencies change.
+- Builder files, build steps, selected file, and latest prompt are saved in `sessionStorage` for the current browser tab session.
 - There is no database-backed project storage, authentication, or cross-device project sync.
 
 ---

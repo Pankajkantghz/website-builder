@@ -1,81 +1,83 @@
 import { Router } from "express";
 import { groq } from "@ai-sdk/groq";
 import { generateText } from "ai";
-import { getSystemPrompt } from "../prompt.js";
-import {
-  generateWithFallback,
-  isQuotaOrRateLimitError,
-} from "../services/modelFallback.js";
+import { BASE_PROMPT, getSystemPrompt } from "../prompts.js";
+import { MODEL } from "../constants.js";
+import { sendError } from "../errors.js";
 
 const router = Router();
 
-router.post("/chat", async (req, res) => {
-  try {
-    const { messages, model } = req.body;
-    if (!Array.isArray(messages) || !messages.length) {
-      res.status(400).json({ message: "Messages are required" });
-      return;
-    }
+router.post("/", async (req, res) => {
+  const input = req.body?.messages;
+  if (!Array.isArray(input) || input.length === 0 || input.length > 80) {
+    res
+      .status(400)
+      .json({
+        code: "INVALID_MESSAGES",
+        message: "Provide between 1 and 80 messages.",
+      });
+    return;
+  }
+
+  const messages: { role: "user" | "assistant"; content: string }[] = [];
+  for (const message of input) {
     if (
-      messages.length > 80 ||
-      !messages.every(
-        (message) =>
-          message &&
-          typeof message === "object" &&
-          ["user", "assistant"].includes(message.role) &&
-          typeof message.content === "string",
-      )
+      !message ||
+      typeof message !== "object" ||
+      (message.role !== "user" && message.role !== "assistant") ||
+      typeof message.content !== "string" ||
+      !message.content.trim()
     ) {
       res
         .status(400)
         .json({
+          code: "INVALID_MESSAGE",
           message:
-            "Messages must contain up to 80 user or assistant text messages.",
+            "Each message needs a user or assistant role and non-empty text.",
         });
       return;
     }
-    const totalMessageCharacters = messages.reduce(
-      (total: number, message: { content: string }) => total + message.content.length,
-      0,
+    messages.push({ role: message.role, content: message.content });
+  }
+  if (
+    messages.reduce((total, message) => total + message.content.length, 0) >
+    100_000
+  ) {
+    console.error(
+      "[API] Chat request exceeded the 100,000 character input limit.",
     );
-    if (totalMessageCharacters > 100_000) {
-      res.status(413).json({ message: "Conversation content must be 100,000 characters or fewer." });
-      return;
-    }
+    res
+      .status(413)
+      .json({
+        code: "CONVERSATION_TOO_LARGE",
+        message: "Conversation content must be 100,000 characters or fewer.",
+      });
+    return;
+  }
 
-    const { text } = await generateWithFallback(
-      (modelId) =>
-        generateText({
-          model: groq(modelId),
-          messages,
-          system: getSystemPrompt(),
-          maxOutputTokens: modelId === "allam-2-7b" ? 4096 : 8000,
-        }),
-      model,
-    );
-
-    if (!text.includes("<boltArtifact")) {
-      console.error("Invalid AI response:", text);
+  try {
+    const response = await generateText({
+      model: groq(MODEL),
+      messages,
+      system: `${BASE_PROMPT}\n${getSystemPrompt()}`,
+      maxOutputTokens: 8_000,
+    });
+    if (
+      !/<boltArtifact\b/.test(response.text) ||
+      !/<boltAction\b/.test(response.text)
+    ) {
       res
         .status(502)
-        .json({ message: "AI returned an invalid website artifact" });
+        .json({
+          code: "INVALID_AI_RESPONSE",
+          message:
+            "The AI model returned an incomplete project response. Please try again.",
+        });
       return;
     }
-    res.json({ response: text });
+    res.json({ response: response.text });
   } catch (error) {
-    console.error(
-      "Chat error:",
-      error instanceof Error ? error.message : error,
-    );
-    if (isQuotaOrRateLimitError(error)) {
-      res.status(429).json({
-        code: "MODEL_QUOTA_EXHAUSTED",
-        message:
-          "All available AI models have reached their token quota or rate limit.",
-      });
-      return;
-    }
-    res.status(500).json({ message: "Failed to generate response" });
+    sendError(res, error);
   }
 });
 

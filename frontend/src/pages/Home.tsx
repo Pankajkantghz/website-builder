@@ -6,13 +6,13 @@ import {
 } from "react";
 import { ArrowRight, Code2, Layers3, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { generateTemplate, getGenerationErrorMessage } from "../services/api";
-import Button from "../components/ui/button";
 import {
-  AI_MODELS,
-  DEFAULT_AI_MODEL,
-  type AIModelId,
-} from "../constants/models";
+  generateTemplate,
+  getGenerationErrorMessage,
+  logGenerationError,
+} from "../services/api";
+import Button from "../components/ui/button";
+import { DEFAULT_AI_MODEL } from "../constants/models";
 
 const examples = [
   "A calm, modern portfolio for a product designer",
@@ -24,7 +24,6 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
-  const [model, setModel] = useState<AIModelId>(DEFAULT_AI_MODEL);
   const navigate = useNavigate();
 
   async function submitPrompt() {
@@ -33,17 +32,18 @@ export default function Home() {
     setIsGenerating(true);
     setError("");
     try {
-      const data = await generateTemplate(request, model);
+      const data = await generateTemplate(request);
       sessionStorage.removeItem("bolt-builder-state");
       navigate("/builder", {
         state: {
           prompt: request,
-          model,
+          model: DEFAULT_AI_MODEL,
           prompts: data.prompts,
           uiPrompts: data.uiPrompts,
         },
       });
     } catch (cause) {
+      logGenerationError(cause);
       setError(getGenerationErrorMessage(cause));
       setIsGenerating(false);
     }
@@ -110,25 +110,8 @@ export default function Home() {
             />
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 px-2 pt-3">
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-2 text-xs text-slate-400">
-                  Model
-                  <select
-                    value={model}
-                    onChange={(event) =>
-                      setModel(event.target.value as AIModelId)
-                    }
-                    className="rounded-lg border border-white/10 bg-slate-950 px-2.5 py-2 text-xs text-slate-200 outline-none focus:border-blue-400/50"
-                  >
-                    {AI_MODELS.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
                 <span className="basis-full text-xs leading-5 text-amber-200/70 sm:basis-auto">
-                  Free models may sometimes give lower-quality or incomplete
-                  responses.
+                  Powered by GPT-OSS 20B for fast generation.
                 </span>
                 <span className="hidden text-xs text-slate-500 sm:inline">
                   ⌘/Ctrl + Enter to build

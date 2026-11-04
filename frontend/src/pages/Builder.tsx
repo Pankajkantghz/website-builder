@@ -13,14 +13,12 @@ export default function Builder() {
   const location = useLocation();
   const routeState = location.state as {
     prompt?: string;
-    prompts?: string[];
+    uiPrompts?: string[];
     model?: AIModelId;
   } | null;
   const prompt = routeState?.prompt ?? "";
-  const prompts = routeState?.prompts ?? [];
-  const [selectedModel, setSelectedModel] = useState<AIModelId>(
-    routeState?.model ?? DEFAULT_AI_MODEL,
-  );
+  const initialTemplate = routeState?.uiPrompts?.[0] ?? "";
+  const selectedModel = DEFAULT_AI_MODEL;
   const {
     files,
     fileCount,
@@ -30,7 +28,7 @@ export default function Builder() {
     isGenerating,
     generationError,
     handleGenerate,
-  } = useBuilder(prompts, prompt);
+  } = useBuilder(prompt, initialTemplate);
   const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
   const [mobilePanel, setMobilePanel] = useState<"files" | "steps" | "none">(
     "none",
@@ -85,14 +83,13 @@ export default function Builder() {
         </div>
       </header>
 
-      <section className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 md:grid-cols-[minmax(250px,300px)_minmax(0,1fr)] md:p-4 xl:grid-cols-[minmax(260px,300px)_minmax(0,1fr)_minmax(300px,360px)]">
-        <div className="hidden min-h-0 md:block">
+      <section className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden p-3 md:grid-cols-[minmax(250px,300px)_minmax(0,1fr)] md:p-4 xl:grid-cols-[minmax(260px,300px)_minmax(0,1fr)_minmax(300px,360px)]">
+        <div className="hidden h-full min-h-0 md:block">
           <BuildStepsPanel
             steps={buildSteps}
             isGenerating={isGenerating}
             error={generationError}
             model={selectedModel}
-            onModelChange={setSelectedModel}
             onGenerate={() => void handleGenerate(undefined, selectedModel)}
             onFollowup={(value, model) => handleGenerate(value, model)}
           />
@@ -124,7 +121,7 @@ export default function Builder() {
               Changes update the preview automatically
             </span>
           </div>
-          <div className="min-h-0 flex-1 p-2 md:p-3">
+          <div className="min-h-0 flex-1 overflow-y-auto p-2 md:p-3">
             <div
               className={`h-full ${activeTab === "preview" ? "" : "hidden"}`}
             >
@@ -187,7 +184,6 @@ export default function Builder() {
                 isGenerating={isGenerating}
                 error={generationError}
                 model={selectedModel}
-                onModelChange={setSelectedModel}
                 onGenerate={() => void handleGenerate(undefined, selectedModel)}
                 onFollowup={(value, model) => handleGenerate(value, model)}
               />

@@ -1,7 +1,7 @@
 import type { BuildStep } from "../types";
 import { useState, type FormEvent } from "react";
 import Button from "./ui/button";
-import { AI_MODELS, type AIModelId } from "../constants/models";
+import type { AIModelId } from "../constants/models";
 
 interface BuildStepsPanelProps {
   steps: BuildStep[];
@@ -10,7 +10,6 @@ interface BuildStepsPanelProps {
   onGenerate: () => void;
   onFollowup: (prompt: string, model: AIModelId) => Promise<boolean> | boolean;
   model: AIModelId;
-  onModelChange: (model: AIModelId) => void;
 }
 
 export default function BuildStepsPanel({
@@ -20,7 +19,6 @@ export default function BuildStepsPanel({
   onGenerate,
   onFollowup,
   model,
-  onModelChange,
 }: BuildStepsPanelProps) {
   const [followup, setFollowup] = useState("");
 
@@ -33,7 +31,7 @@ export default function BuildStepsPanel({
   }
 
   return (
-    <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/10">
+    <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/10">
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mb-5 flex items-center justify-between">
           <div>
@@ -47,32 +45,13 @@ export default function BuildStepsPanel({
           </span>
         </div>
 
-        <label className="mb-4 block text-xs font-medium text-slate-300">
-          Model for this build
-          <select
-            value={model}
-            onChange={(event) => onModelChange(event.target.value as AIModelId)}
-            disabled={isGenerating}
-            className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-blue-400/50 disabled:opacity-60"
-          >
-            {AI_MODELS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <span className="mt-1 block font-normal text-slate-500">
-            If its quota is used up, the next available model is tried.
-          </span>
-        </label>
-
         <p
           role="note"
           className="mb-4 rounded-lg border border-amber-300/15 bg-amber-300/5 px-3 py-2 text-xs leading-5 text-amber-100/80"
         >
-          Free models can vary in quality and may sometimes return incomplete
-          responses. If that happens, ask for the response to continue or try
-          again.
+          This app uses a free AI model. Its responses may be inaccurate,
+          incomplete, or need corrections. Review generated code and ask for
+          changes when needed.
         </p>
 
         {steps.length === 0 && (

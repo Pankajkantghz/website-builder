@@ -4,7 +4,9 @@ import type { FileItem } from "../types";
 import { getWebContainer } from "../services/webContainer";
 import {
   collectProjectFiles,
+  createProjectPackageJson,
   createProjectTree,
+  getProjectDependencySignature,
   installDependencies,
 } from "../utils/webContainerProject";
 import Button from "./ui/button";
@@ -22,6 +24,7 @@ export default function Preview({ files }: PreviewProps) {
   const containerRef = useRef<WebContainer | null>(null);
   const latestFiles = useRef(files);
   const fileCache = useRef(new Map<string, string>());
+  const installedDependencies = useRef("");
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
   const previewErrorUnsubscribe = useRef<(() => void) | null>(null);
 
@@ -66,17 +69,19 @@ export default function Preview({ files }: PreviewProps) {
           },
         );
         const initialFiles = collectProjectFiles(latestFiles.current);
+        initialFiles.set("package.json", createProjectPackageJson(latestFiles.current));
         await container.mount(createProjectTree(latestFiles.current));
         fileCache.current = initialFiles;
 
         const ready = new Promise<string>((resolve) => {
           container.on("server-ready", (_port, url) => resolve(url));
         });
-        const installExitCode = await installDependencies(container);
-        if (installExitCode !== 0)
+        const install = await installDependencies(container);
+        if (install.exitCode !== 0)
           throw new Error(
-            "Dependency installation failed. Check the generated package.json and try again.",
+            `Dependency installation failed.${install.output ? `\n${install.output}` : " Check the generated package.json and try again."}`,
           );
+        installedDependencies.current = getProjectDependencySignature(latestFiles.current);
         if (cancelled) return;
         setStatus("starting");
         await container.spawn("npm", ["run", "dev", "--", "--host", "0.0.0.0"]);
@@ -105,6 +110,10 @@ export default function Preview({ files }: PreviewProps) {
     const container = containerRef.current;
     if (!container || status !== "ready") return;
     const nextFiles = collectProjectFiles(files);
+    nextFiles.set("package.json", createProjectPackageJson(files));
+    const nextDependencySignature = getProjectDependencySignature(files);
+    const dependenciesChanged =
+      nextDependencySignature !== installedDependencies.current;
     writeQueue.current = writeQueue.current
       .then(async () => {
         for (const path of fileCache.current.keys()) {
@@ -119,6 +128,17 @@ export default function Preview({ files }: PreviewProps) {
             await container.fs.mkdir(`/${parent}`, { recursive: true });
           await container.fs.writeFile(`/${path}`, contents);
           fileCache.current.set(path, contents);
+        }
+        if (dependenciesChanged) {
+          setStatus("installing");
+          const install = await installDependencies(container);
+          if (install.exitCode !== 0) {
+            throw new Error(
+              `Dependency installation failed.${install.output ? `\n${install.output}` : " Check the generated package.json and try again."}`,
+            );
+          }
+          installedDependencies.current = nextDependencySignature;
+          setStatus("ready");
         }
       })
       .catch((cause: unknown) => {
