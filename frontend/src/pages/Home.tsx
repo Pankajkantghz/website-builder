@@ -6,11 +6,6 @@ import {
 } from "react";
 import { ArrowRight, Code2, Layers3, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import {
-  generateTemplate,
-  getGenerationErrorMessage,
-  logGenerationError,
-} from "../services/api";
 import Button from "../components/ui/button";
 import { DEFAULT_AI_MODEL } from "../constants/models";
 
@@ -23,30 +18,16 @@ const examples = [
 export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  async function submitPrompt() {
+  function submitPrompt() {
     const request = prompt.trim();
     if (!request || isGenerating) return;
     setIsGenerating(true);
-    setError("");
-    try {
-      const data = await generateTemplate(request);
-      sessionStorage.removeItem("bolt-builder-state");
-      navigate("/builder", {
-        state: {
-          prompt: request,
-          model: DEFAULT_AI_MODEL,
-          prompts: data.prompts,
-          uiPrompts: data.uiPrompts,
-        },
-      });
-    } catch (cause) {
-      logGenerationError(cause);
-      setError(getGenerationErrorMessage(cause));
-      setIsGenerating(false);
-    }
+    sessionStorage.removeItem("bolt-builder-state");
+    navigate("/builder", {
+      state: { prompt: request, model: DEFAULT_AI_MODEL },
+    });
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -135,15 +116,6 @@ export default function Home() {
               </Button>
             </div>
           </form>
-          {error && (
-            <p
-              role="alert"
-              className="mt-3 rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-200"
-            >
-              {error}
-            </p>
-          )}
-
           <div className="mt-6">
             <p className="mb-3 text-xs font-medium uppercase tracking-[0.15em] text-slate-500">
               Need a starting point?
