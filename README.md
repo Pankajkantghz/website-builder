@@ -2,7 +2,7 @@
 
 ### Describe a website. Generate it. Refine it.
 
-An AI-assisted website builder built with React, TypeScript, Express, Groq, and WebContainers. Enter a prompt, inspect the generated project files, view the site in a live browser preview, and request follow-up changes.
+An AI-assisted website builder built with React, TypeScript, Express, Groq, and WebContainers. Enter one focused prompt, inspect the generated project files, and view the site in a live browser preview.
 
 ---
 
@@ -10,7 +10,7 @@ An AI-assisted website builder built with React, TypeScript, Express, Groq, and 
 
 - Use Groq's `openai/gpt-oss-20b` model for fast generation.
 - Generate project files from a natural-language prompt.
-- Refine the project with follow-up prompts.
+- Generate a fresh project from one focused prompt at a time.
 - Browse generated files and inspect them in the code editor.
 - Run supported generated projects in a WebContainer preview.
 - Sync file edits to the running preview and reinstall dependencies when imports change.
@@ -61,10 +61,10 @@ Browser
 ### Request Flow
 
 1. The home page opens the builder with the prompt.
-2. The first build sends the prompt to `POST /chat`; refinements send the new instruction and a size-limited snapshot of current project files to the same route.
+2. Each build sends one focused prompt to `POST /chat`, without prior messages or project files, to keep the free model's context small.
 3. The backend returns project file actions, which the frontend parses into the file tree.
 4. The preview mounts the files in a WebContainer, installs dependencies, and starts the generated development server.
-5. Code edits and generated file changes sync to the running preview.
+5. A successful new prompt replaces the current project; code edits sync to the running preview.
 
 The backend also exposes `POST /template` for optional starter selection; the current frontend does not call it.
 

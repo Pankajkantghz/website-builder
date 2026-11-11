@@ -142,8 +142,8 @@ export default function Home() {
             />
             <Feature
               icon={<Layers3 size={16} />}
-              title="Refine as you go"
-              description="Ask for changes after the first version."
+              title="One prompt per build"
+              description="Start a fresh website with a focused prompt."
             />
             <Feature
               icon={<Code2 size={16} />}

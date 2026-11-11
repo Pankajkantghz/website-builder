@@ -14,8 +14,7 @@ import { parseXml } from "../utils/parseXml";
 import type { AIModelId } from "../constants/models";
 
 const STORAGE_KEY = "bolt-builder-state";
-const MAX_PROMPT_CHARACTERS = 20_000;
-const MAX_PROJECT_CONTEXT_CHARACTERS = 24_000;
+const MAX_PROMPT_CHARACTERS = 6_000;
 
 interface SavedBuilderState {
   files: FileItem[];
@@ -67,62 +66,7 @@ function countFiles(items: FileItem[]): number {
   );
 }
 
-function getProjectContext(
-  items: FileItem[],
-  promptLength: number,
-  initialTemplate: string,
-): string {
-  const files: { path: string; content: string }[] = [];
-  const collect = (entries: FileItem[]) => {
-    for (const entry of entries) {
-      if (entry.type === "file") {
-        files.push({ path: entry.path.slice(1), content: entry.content ?? "" });
-      } else {
-        collect(entry.children ?? []);
-      }
-    }
-  };
-  collect(items);
-  if (!files.length) {
-    const template = initialTemplate.trim();
-    return template
-      ? `\n\nStarter project context:\n${template.slice(0, Math.max(0, MAX_PROJECT_CONTEXT_CHARACTERS - promptLength))}`
-      : "";
-  }
-
-  files.sort((left, right) => {
-    const priority = (path: string) =>
-      /(^|\/)(App|main|index|style)\.[jt]sx?$|(^|\/)(index|style)\.css$|^package\.json$/.test(
-        path,
-      )
-        ? 0
-        : 1;
-    return priority(left.path) - priority(right.path);
-  });
-
-  let remaining = Math.max(0, MAX_PROJECT_CONTEXT_CHARACTERS - promptLength);
-  const context = ["\n\nCurrent project files:"];
-  let omitted = false;
-  for (const file of files) {
-    const header = `\n--- ${file.path}\n`;
-    if (remaining <= header.length) {
-      omitted = true;
-      break;
-    }
-    const content = file.content.slice(0, remaining - header.length);
-    context.push(header, content);
-    remaining -= header.length + content.length;
-    if (content.length < file.content.length) {
-      omitted = true;
-      break;
-    }
-  }
-  if (omitted)
-    context.push("\n[Project context shortened to fit the request limit.]");
-  return context.join("");
-}
-
-export function useBuilder(initialPrompt: string, initialTemplate: string) {
+export function useBuilder(initialPrompt: string) {
   const [saved] = useState(readSavedState);
   const [files, setFiles] = useState<FileItem[]>(saved?.files ?? []);
   const filesRef = useRef(files);
@@ -181,14 +125,14 @@ export function useBuilder(initialPrompt: string, initialTemplate: string) {
           },
         );
         setGenerationError(
-          "That prompt is too long. Keep it under 20,000 characters and try again.",
+          "That prompt is too long for the free AI model. Keep it under 6,000 characters and try again.",
         );
         return false;
       }
       const conversation = [
         {
           role: "user" as const,
-          content: `${prompt}${getProjectContext(filesRef.current, prompt.length, initialTemplate)}`,
+          content: prompt,
         },
       ];
       setIsGenerating(true);
@@ -196,7 +140,7 @@ export function useBuilder(initialPrompt: string, initialTemplate: string) {
       try {
         const response = await sendChatMessage(conversation);
         const nextActions = parseXml(response.response);
-        const nextFiles = nextActions.reduce(applyFileAction, filesRef.current);
+        const nextFiles = nextActions.reduce(applyFileAction, [] as FileItem[]);
 
         if (!nextFiles.length) {
           throw new Error("The response did not contain any files.");
@@ -219,7 +163,7 @@ export function useBuilder(initialPrompt: string, initialTemplate: string) {
         setIsGenerating(false);
       }
     },
-    [initialTemplate, isGenerating, messages],
+    [isGenerating, messages],
   );
 
   const updateFileContent = useCallback((path: string, content: string) => {

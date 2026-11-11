@@ -13,11 +13,9 @@ export default function Builder() {
   const location = useLocation();
   const routeState = location.state as {
     prompt?: string;
-    uiPrompts?: string[];
     model?: AIModelId;
   } | null;
   const prompt = routeState?.prompt ?? "";
-  const initialTemplate = routeState?.uiPrompts?.[0] ?? "";
   const selectedModel = DEFAULT_AI_MODEL;
   const {
     files,
@@ -29,7 +27,7 @@ export default function Builder() {
     isGenerating,
     generationError,
     handleGenerate,
-  } = useBuilder(prompt, initialTemplate);
+  } = useBuilder(prompt);
   const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
   const [mobilePanel, setMobilePanel] = useState<"files" | "steps" | "none">(
     "none",

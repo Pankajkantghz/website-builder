@@ -104,8 +104,11 @@ export default function BuildStepsPanel({
           htmlFor="followup-prompt"
           className="mb-2 block text-xs font-medium text-slate-300"
         >
-          Refine your website
+          New website prompt
         </label>
+        <p className="mb-2 text-xs leading-5 text-slate-500">
+          Each request uses one prompt and starts a fresh build to keep the free model context small.
+        </p>
         <div className="flex items-end gap-2 rounded-xl border border-white/10 bg-slate-950 p-2 focus-within:border-blue-400/60">
           <textarea
             id="followup-prompt"
@@ -117,7 +120,7 @@ export default function BuildStepsPanel({
                 event.currentTarget.form?.requestSubmit();
               }
             }}
-            placeholder="Make the header sticky…"
+            placeholder="Describe a complete website in one focused prompt…"
             rows={2}
             className="min-h-12 flex-1 resize-none bg-transparent px-2 py-1 text-sm text-white outline-none placeholder:text-slate-500"
           />
@@ -126,7 +129,7 @@ export default function BuildStepsPanel({
             size="sm"
             disabled={!followup.trim() || isGenerating}
           >
-            Send
+            Build fresh
           </Button>
         </div>
       </form>
