@@ -52,12 +52,10 @@ function limitRequests(req: Request, res: Response, next: NextFunction) {
       "Retry-After",
       String(Math.max(1, Math.ceil((window.resetAt - now) / 1000))),
     );
-    res
-      .status(429)
-      .json({
-        code: "RATE_LIMITED",
-        message: "Too many requests. Try again in a minute.",
-      });
+    res.status(429).json({
+      code: "RATE_LIMITED",
+      message: "Too many requests. Try again in a minute.",
+    });
     return;
   }
   window.count += 1;
@@ -76,30 +74,24 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (res.headersSent) return;
   const value = error as { status?: number; type?: string; message?: string };
   if (value?.message === "Origin not allowed by CORS") {
-    res
-      .status(403)
-      .json({
-        code: "ORIGIN_NOT_ALLOWED",
-        message: "This website origin is not allowed.",
-      });
+    res.status(403).json({
+      code: "ORIGIN_NOT_ALLOWED",
+      message: "This website origin is not allowed.",
+    });
     return;
   }
   if (value?.type === "entity.too.large") {
-    res
-      .status(413)
-      .json({
-        code: "REQUEST_TOO_LARGE",
-        message: "Request body is too large.",
-      });
+    res.status(413).json({
+      code: "REQUEST_TOO_LARGE",
+      message: "Request body is too large.",
+    });
     return;
   }
   if (value?.type === "entity.parse.failed") {
-    res
-      .status(400)
-      .json({
-        code: "INVALID_JSON",
-        message: "Request body must contain valid JSON.",
-      });
+    res.status(400).json({
+      code: "INVALID_JSON",
+      message: "Request body must contain valid JSON.",
+    });
     return;
   }
   console.error("Request failed:", error);
@@ -108,7 +100,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     message: "The server could not complete the request.",
   });
 });
-
-app.listen(Number(process.env.PORT || 3000), () => {
-  console.log(`Server running at http://localhost:${process.env.PORT || 3000}`);
+const PORT = Number(process.env.PORT) || 3000;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
 });
