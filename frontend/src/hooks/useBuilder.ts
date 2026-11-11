@@ -202,10 +202,9 @@ export function useBuilder(initialPrompt: string, initialTemplate: string) {
           throw new Error("The response did not contain any files.");
         }
 
-        const appFile = findFile(
-          nextFiles,
-          (file) => file.name.toLowerCase() === "app.tsx",
-        );
+        const appFile =
+          findFile(nextFiles, (file) => /^(app|main)\.(tsx?|jsx?)$/i.test(file.name)) ??
+          findFile(nextFiles, () => true);
         filesRef.current = nextFiles;
         setFiles(nextFiles);
         setMessages([{ role: "user", content: prompt }]);
@@ -223,11 +222,33 @@ export function useBuilder(initialPrompt: string, initialTemplate: string) {
     [initialTemplate, isGenerating, messages],
   );
 
+  const updateFileContent = useCallback((path: string, content: string) => {
+    let updatedFile: FileItem | null = null;
+    const updateTree = (items: FileItem[]): FileItem[] =>
+      items.map((item) => {
+        if (item.type === "file" && item.path === path) {
+          updatedFile = { ...item, content };
+          return updatedFile;
+        }
+        if (item.type === "folder") {
+          return { ...item, children: updateTree(item.children ?? []) };
+        }
+        return item;
+      });
+
+    const nextFiles = updateTree(filesRef.current);
+    if (!updatedFile) return;
+    filesRef.current = nextFiles;
+    setFiles(nextFiles);
+    setSelectedFile(updatedFile);
+  }, []);
+
   return {
     files,
     fileCount: countFiles(files),
     selectedFile,
     setSelectedFile,
+    updateFileContent,
     buildSteps,
     isGenerating,
     generationError,

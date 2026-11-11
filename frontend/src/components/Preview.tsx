@@ -23,6 +23,7 @@ export default function Preview({ files }: PreviewProps) {
   const [error, setError] = useState("");
   const containerRef = useRef<WebContainer | null>(null);
   const latestFiles = useRef(files);
+  const previousFiles = useRef(files);
   const fileCache = useRef(new Map<string, string>());
   const installedDependencies = useRef("");
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
@@ -37,7 +38,13 @@ export default function Preview({ files }: PreviewProps) {
 
   useEffect(() => {
     latestFiles.current = files;
-  }, [files]);
+    const filesChanged = previousFiles.current !== files;
+    previousFiles.current = files;
+    if (filesChanged && previewUrl && status === "error") {
+      setError("");
+      setStatus("ready");
+    }
+  }, [files, previewUrl, status]);
 
   useEffect(() => () => previewErrorUnsubscribe.current?.(), []);
 

@@ -3,11 +3,8 @@ import type { ChatMessage, ChatResponse, TemplateResponse } from "../types";
 
 const api = axios.create({
   // Vite exposes only variables prefixed with VITE_ to browser code.
-  baseURL:
-    import.meta.env.VITE_API_URL ||
-    (import.meta.env.DEV
-      ? "http://localhost:3000"
-      : "https://website-builder-api.onrender.com"),
+  // Use the deployed API for local and production frontends unless overridden.
+  baseURL: import.meta.env.VITE_API_URL || "https://website-builder-dp0j.onrender.com",
   headers: {
     "Content-Type": "application/json",
   },
@@ -23,89 +20,23 @@ export const generateTemplate = async (
 export const sendChatMessage = async (
   messages: ChatMessage[],
 ): Promise<ChatResponse> => {
-  const prompt = messages
-    .filter((message) => message.role === "user")
-    .map((message) => message.content)
-    .join("\n\n");
-  const baseURL = String(api.defaults.baseURL).replace(/\/$/, "");
-  const response = await fetch(`${baseURL}/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ prompt }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    let detail = body;
-    let errorCode = "";
-    try {
-      const parsed = JSON.parse(body);
-      detail = parsed?.message ?? parsed?.error?.message ?? body;
-      errorCode = parsed?.code ?? "";
-    } catch {
-      // Keep the plain-text response for error classification below.
-    }
-    const error = new Error(detail || `Request failed with status ${response.status}`);
-    Object.assign(error, { status: response.status, code: errorCode });
-    throw error;
+  const response = await api.post<ChatResponse>("/chat", { messages });
+  const data: unknown = response.data;
+  if (typeof data === "string" && /service has been suspended/i.test(data)) {
+    throw new Error(
+      "The generation API is suspended by its hosting provider. Please contact the site owner; this does not indicate that your AI token quota is exhausted.",
+    );
   }
-
-  if (response.headers.get("content-type")?.includes("text/html")) {
-    const page = await response.text();
-    throw new Error(/service has been suspended/i.test(page)
-      ? "The generation API is suspended by its hosting provider. Please contact the site owner; this does not indicate that your AI token quota is exhausted."
-      : "The generation API returned a web page instead of generated files. Please check the API deployment and URL.");
+  if (
+    !data ||
+    typeof data !== "object" ||
+    typeof (data as { response?: unknown }).response !== "string"
+  ) {
+    throw new Error(
+      "The generation API returned an invalid response. Check that the deployed /chat route is available.",
+    );
   }
-
-  if (!response.body) throw new Error("The server returned an empty response.");
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let output = "";
-  let buffer = "";
-  const consumeEvent = (event: string) => {
-    const data = event
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trimStart())
-      .join("\n");
-    if (!data || data === "[DONE]") return;
-    let parsed: any;
-    try {
-      parsed = JSON.parse(data);
-    } catch {
-      output += data;
-      return;
-    }
-    if (parsed?.error || parsed?.type === "error") {
-      const message = parsed.error?.message ?? parsed.message ?? "Generation failed.";
-      const error = new Error(message);
-      Object.assign(error, { code: parsed.code ?? parsed.error?.code ?? "" });
-      throw error;
-    }
-    try {
-      output += typeof parsed === "string"
-        ? parsed
-        : String(parsed.text ?? parsed.content ?? parsed.response ?? parsed.delta ?? "");
-    } catch (error) {
-      if (error instanceof Error) throw error;
-    }
-  };
-  while (true) {
-    const { value, done } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done });
-    const events = buffer.split(/\r?\n\r?\n/);
-    buffer = events.pop() ?? "";
-    events.forEach(consumeEvent);
-    if (done) break;
-  }
-  if (buffer.trim()) consumeEvent(buffer);
-  if (/<!doctype html|<html\b/i.test(output)) {
-    throw new Error(output.match(/service has been suspended/i)
-      ? "The generation API is suspended by its hosting provider. Please contact the site owner; this does not indicate that your AI token quota is exhausted."
-      : "The generation API returned a web page instead of generated files. Please check the API deployment and URL.");
-  }
-  if (!output.trim()) throw new Error("The server completed without returning generated files.");
-  return { response: output };
+  return data as ChatResponse;
 };
 
 export function getGenerationErrorMessage(error: unknown): string {
@@ -117,6 +48,9 @@ export function getGenerationErrorMessage(error: unknown): string {
     : String(error && typeof error === "object" && "code" in error ? error.code : "");
   if (responseCode === "MODEL_QUOTA_EXHAUSTED") {
     return "No response was generated because the configured AI model ran out of tokens or hit its rate limit. Please try again after the quota resets.";
+  }
+  if (responseCode === "RATE_LIMITED") {
+    return "Too many generation requests were sent in a short time. Please wait a minute and try again.";
   }
   const detail = `${responseMessage} ${error instanceof Error ? error.message : ""}`;
   if (/service has been suspended|api is suspended/i.test(detail)) {

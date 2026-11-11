@@ -24,6 +24,7 @@ export default function Builder() {
     fileCount,
     selectedFile,
     setSelectedFile,
+    updateFileContent,
     buildSteps,
     isGenerating,
     generationError,
@@ -130,7 +131,7 @@ export default function Builder() {
             <div
               className={`h-full overflow-hidden rounded-xl border border-white/10 bg-slate-950 ${activeTab === "code" ? "" : "hidden"}`}
             >
-              <CodeEditor file={selectedFile} />
+              <CodeEditor file={selectedFile} onChange={updateFileContent} />
             </div>
           </div>
         </section>

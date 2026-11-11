@@ -38,14 +38,11 @@ An AI-assisted website builder built with React, TypeScript, Express, Groq, and 
 Browser
   ├── Home: prompt entry
   ├── Builder: build steps, files, code editor, preview
-  ├── API client ───────────────► Express routes
+  ├── API client ───────────────► POST /chat
   └── WebContainer: generated project runtime
-                                    │
-                                    ├── /template ─► classify prompt and return starter prompts
-                                    └── /chat ─────► generate or update project files
-                                                         │
-                                                         ▼
-                                              Groq model service
+                                       │
+                                       ▼
+                              Groq model service
 ```
 
 ### Backend Structure
@@ -63,12 +60,13 @@ Browser
 
 ### Request Flow
 
-1. The home page sends the prompt to `POST /template`.
-2. The backend classifies the request and returns starter prompts.
-3. The first build sends the latest prompt with its starter context; refinements send the new instruction and a size-limited snapshot of current project files to `POST /chat`.
-4. The backend parses the model response into project file actions on the frontend.
-5. The preview mounts the files in a WebContainer, installs dependencies, and starts the generated development server.
-6. Follow-up prompts send only the new instruction plus current project context to `/chat`; file changes sync to the running preview.
+1. The home page opens the builder with the prompt.
+2. The first build sends the prompt to `POST /chat`; refinements send the new instruction and a size-limited snapshot of current project files to the same route.
+3. The backend returns project file actions, which the frontend parses into the file tree.
+4. The preview mounts the files in a WebContainer, installs dependencies, and starts the generated development server.
+5. Code edits and generated file changes sync to the running preview.
+
+The backend also exposes `POST /template` for optional starter selection; the current frontend does not call it.
 
 ---
 
@@ -112,7 +110,7 @@ bolt-app/
 
 ## 🔌 API
 
-The frontend calls the backend at `http://localhost:3000` by default. Set `VITE_API_URL` in the frontend build environment to the deployed backend URL.
+The frontend calls `https://website-builder-dp0j.onrender.com` by default. Set `VITE_API_URL` in the frontend build environment to override it.
 
 API errors include a short `code` and user-facing `message` so the frontend can show a useful error.
 
@@ -187,7 +185,7 @@ Open the Vite URL shown in the terminal, usually `http://localhost:5173`.
 ## 🔐 Configuration and Runtime Notes
 
 - The backend reads `GROQ_API_KEY` from `backend/.env`. Keep it out of frontend variables and source control.
-- The frontend API URL defaults to `http://localhost:3000`; configure `VITE_API_URL` for a deployed backend.
+- The frontend API URL defaults to the deployed Render backend; set `VITE_API_URL` to use a different backend.
 - The backend CORS policy defaults to `http://localhost:5173`; configure `CORS_ORIGINS` as a comma-separated list of allowed origins in deployment.
 - The backend allows 20 requests per IP per minute, limits template prompts to 20,000 characters, chat content to 100,000 characters, and JSON bodies to 256 KB. The in-memory rate limiter is per process; multi-instance deployments should use a shared rate-limit store.
 - The backend listens on port `3000` in `backend/src/index.ts`.
