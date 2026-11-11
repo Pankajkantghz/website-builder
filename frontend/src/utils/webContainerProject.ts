@@ -2,6 +2,21 @@ import type { FileSystemTree, WebContainer } from "@webcontainer/api";
 import type { FileItem } from "../types";
 import { normalizeGeneratedContent } from "./fileTree";
 
+const tailwindConfig =
+  "module.exports = { content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'], theme: { extend: {} }, plugins: [] };";
+const postcssConfig =
+  "module.exports = { plugins: { tailwindcss: {}, autoprefixer: {} } };";
+
+function hasTailwindUsage(files: Map<string, string>): boolean {
+  return [...files].some(([path, contents]) => {
+    if (path.endsWith(".css")) {
+      return /@tailwind\s|@import\s+["']tailwindcss["']/.test(contents);
+    }
+    if (!/\.[jt]sx?$/.test(path)) return false;
+    return /className\s*=\s*["'`{][^\n]*(?:\b(?:flex|grid|block|hidden|inline-flex|min-h-|min-w-|max-w-|w-|h-|p-|px-|py-|m-|mx-|my-|bg-|text-|font-|items-|justify-|rounded|shadow|gap-|space-[xy]-|sm:|md:|lg:|xl:))/.test(contents);
+  });
+}
+
 /** Flattens the UI file tree into safe project-relative file paths. */
 export function collectProjectFiles(
   items: FileItem[],
@@ -15,7 +30,16 @@ export function collectProjectFiles(
         !item.path.includes("\\") &&
         !path.some((part) => part === "." || part === "..")
       ) {
-        output.set(path.join("/"), normalizeGeneratedContent(item.content ?? ""));
+        const relativePath = path.join("/");
+        const content = normalizeGeneratedContent(item.content ?? "");
+        const configName = relativePath.split("/").at(-1);
+        if (/^tailwind\.config\.(?:[cm]?js|ts)$/.test(configName ?? "")) {
+          output.set("tailwind.config.cjs", tailwindConfig);
+        } else if (/^postcss\.config\.(?:[cm]?js|ts)$/.test(configName ?? "")) {
+          output.set("postcss.config.cjs", postcssConfig);
+        } else {
+          output.set(relativePath, content);
+        }
       }
     } else if (item.children) {
       collectProjectFiles(item.children, output);
@@ -64,9 +88,12 @@ function createPackageJson(files: Map<string, string>): string {
   const scripts = (packageJson.scripts as Record<string, string> | undefined) ?? {};
   const dependencies = (packageJson.dependencies as Record<string, string> | undefined) ?? {};
   const devDependencies = (packageJson.devDependencies as Record<string, string> | undefined) ?? {};
-  const usesTailwind = [...files].some(
-    ([path, contents]) => path.endsWith(".css") && /@tailwind\s/.test(contents),
-  );
+  const usesTailwind = hasTailwindUsage(files);
+  if (usesTailwind) {
+    delete dependencies.tailwindcss;
+    delete dependencies.postcss;
+    delete dependencies.autoprefixer;
+  }
 
   return JSON.stringify(
     {
@@ -81,16 +108,16 @@ function createPackageJson(files: Map<string, string>): string {
         ...dependencies,
       },
       devDependencies: {
-        vite: devDependencies.vite ?? "latest",
-        "@vitejs/plugin-react": devDependencies["@vitejs/plugin-react"] ?? "latest",
+        ...devDependencies,
+        vite: "latest",
+        "@vitejs/plugin-react": "latest",
         ...(usesTailwind
           ? {
-              tailwindcss: devDependencies.tailwindcss ?? "^3.4.19",
+              tailwindcss: "^3.4.19",
               postcss: devDependencies.postcss ?? "^8.5.32",
               autoprefixer: devDependencies.autoprefixer ?? "^10.6.2",
             }
           : {}),
-        ...devDependencies,
       },
     },
     null,
@@ -117,29 +144,40 @@ export function getProjectDependencySignature(items: FileItem[]): string {
 
 /** Adds the minimum files needed to start a generated React app in Vite. */
 function addEntryFiles(files: Map<string, string>): void {
+  const entryPath = ["src/main.tsx", "src/main.ts", "src/main.jsx", "src/main.js"].find(
+    (path) => files.has(path),
+  );
+  const appPath = ["src/App.tsx", "src/App.ts", "src/App.jsx", "src/App.js"].find(
+    (path) => files.has(path),
+  );
+  if (!entryPath && appPath) {
+    const stylesheetPath = ["src/index.css", "src/style.css"].find((path) => files.has(path));
+    const mainPath = appPath.endsWith(".jsx") || appPath.endsWith(".js")
+      ? "src/main.jsx"
+      : "src/main.tsx";
+    const stylesheetImport = stylesheetPath
+      ? `import './${stylesheetPath.slice("src/".length)}';\n`
+      : "";
+    files.set(
+      mainPath,
+      `import React from 'react';\nimport { createRoot } from 'react-dom/client';\n${stylesheetImport}import App from './App';\ncreateRoot(document.getElementById('root')).render(<React.StrictMode><App /></React.StrictMode>);`,
+    );
+  }
+
   if (!files.has("index.html")) {
+    const mainPath = entryPath ?? (appPath?.endsWith(".jsx") || appPath?.endsWith(".js") ? "src/main.jsx" : "src/main.tsx");
     files.set(
       "index.html",
-      `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Website Preview</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>`,
+      `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Website Preview</title></head><body><div id="root"></div><script type="module" src="/${mainPath}"></script></body></html>`,
     );
   }
 
-  if (!files.has("src/main.tsx") && files.has("src/App.tsx")) {
-    const stylesheetImport = files.has("src/index.css") ? "import './index.css';\n" : "";
-    files.set(
-      "src/main.tsx",
-      `import React from 'react';\nimport { createRoot } from 'react-dom/client';\n${stylesheetImport}import App from './App';\ncreateRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);`,
-    );
+  const needsTailwind = hasTailwindUsage(files);
+  if (needsTailwind && !files.has("postcss.config.js") && !files.has("postcss.config.cjs")) {
+    files.set("postcss.config.cjs", postcssConfig);
   }
-
-  const usesTailwind = [...files].some(
-    ([path, contents]) => path.endsWith(".css") && /@tailwind\s/.test(contents),
-  );
-  if (usesTailwind && !files.has("postcss.config.js")) {
-    files.set("postcss.config.js", `export default { plugins: { tailwindcss: {}, autoprefixer: {} } };`);
-  }
-  if (usesTailwind && !files.has("tailwind.config.js")) {
-    files.set("tailwind.config.js", `export default { content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'], theme: { extend: {} }, plugins: [] };`);
+  if (needsTailwind && !files.has("tailwind.config.js") && !files.has("tailwind.config.cjs")) {
+    files.set("tailwind.config.cjs", tailwindConfig);
   }
 }
 
@@ -213,11 +251,17 @@ function toFileSystemTree(files: Map<string, string>): FileSystemTree {
   return tree;
 }
 
-export function createProjectTree(items: FileItem[]): FileSystemTree {
+/** Builds the full preview filesystem, including generated entry/config files. */
+export function createProjectFiles(items: FileItem[]): Map<string, string> {
   const files = collectProjectFiles(items);
   files.set("package.json", createPackageJson(files));
   addEntryFiles(files);
   addMissingStylesheets(files);
+  return files;
+}
+
+export function createProjectTree(items: FileItem[]): FileSystemTree {
+  const files = createProjectFiles(items);
   return toFileSystemTree(files);
 }
 

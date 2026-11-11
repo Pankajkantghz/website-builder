@@ -10,10 +10,10 @@ const router: Router = express.Router();
 
 router.post("/", async (req, res) => {
   const input = req.body?.messages;
-  if (!Array.isArray(input) || input.length === 0 || input.length > 80) {
+  if (!Array.isArray(input) || input.length !== 1 || input[0]?.role !== "user") {
     res.status(400).json({
       code: "INVALID_MESSAGES",
-      message: "Provide between 1 and 80 messages.",
+      message: "Send one focused user prompt.",
     });
     return;
   }
@@ -38,14 +38,14 @@ router.post("/", async (req, res) => {
   }
   if (
     messages.reduce((total, message) => total + message.content.length, 0) >
-    100_000
+    2_500
   ) {
     console.error(
-      "[API] Chat request exceeded the 100,000 character input limit.",
+      "[API] Chat request exceeded the 2,500 character input limit.",
     );
     res.status(413).json({
-      code: "CONVERSATION_TOO_LARGE",
-      message: "Conversation content must be 100,000 characters or fewer.",
+      code: "PROMPT_TOO_LARGE",
+      message: "Prompt must be 2,500 characters or fewer.",
     });
     return;
   }
@@ -55,7 +55,7 @@ router.post("/", async (req, res) => {
       model: groq(MODEL),
       messages,
       system: `${BASE_PROMPT}\n${getSystemPrompt()}`,
-      maxOutputTokens: 8_000,
+      maxOutputTokens: 5_000,
     });
     if (
       !/<boltArtifact\b/.test(response.text) ||

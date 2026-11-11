@@ -52,8 +52,8 @@ export function getGenerationErrorMessage(error: unknown): string {
   if (responseCode === "RATE_LIMITED") {
     return "Too many generation requests were sent in a short time. Please wait a minute and try again.";
   }
-  if (["AI_INPUT_TOO_LARGE", "CONVERSATION_TOO_LARGE"].includes(responseCode)) {
-    return "This prompt is too large for the free AI model. Shorten it to one focused request and try again.";
+  if (["AI_INPUT_TOO_LARGE", "CONVERSATION_TOO_LARGE", "PROMPT_TOO_LARGE"].includes(responseCode)) {
+    return "This prompt is too large for the free AI model. Shorten it to one focused request under 2,500 characters and try again.";
   }
   const detail = `${responseMessage} ${error instanceof Error ? error.message : ""}`;
   if (/service has been suspended|api is suspended/i.test(detail)) {

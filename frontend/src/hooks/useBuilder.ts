@@ -14,7 +14,7 @@ import { parseXml } from "../utils/parseXml";
 import type { AIModelId } from "../constants/models";
 
 const STORAGE_KEY = "bolt-builder-state";
-const MAX_PROMPT_CHARACTERS = 6_000;
+const MAX_PROMPT_CHARACTERS = 2_500;
 
 interface SavedBuilderState {
   files: FileItem[];
@@ -125,7 +125,7 @@ export function useBuilder(initialPrompt: string) {
           },
         );
         setGenerationError(
-          "That prompt is too long for the free AI model. Keep it under 6,000 characters and try again.",
+          "This prompt is too large for the free AI model. Shorten it to one focused request under 2,500 characters and try again.",
         );
         return false;
       }

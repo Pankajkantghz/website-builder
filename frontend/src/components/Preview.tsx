@@ -3,8 +3,7 @@ import type { PreviewMessage, WebContainer } from "@webcontainer/api";
 import type { FileItem } from "../types";
 import { getWebContainer } from "../services/webContainer";
 import {
-  collectProjectFiles,
-  createProjectPackageJson,
+  createProjectFiles,
   createProjectTree,
   getProjectDependencySignature,
   installDependencies,
@@ -12,6 +11,40 @@ import {
 import Button from "./ui/button";
 
 type PreviewStatus = "waiting" | "installing" | "starting" | "ready" | "error";
+
+async function startDevServer(container: WebContainer): Promise<string> {
+  let unsubscribe = () => {};
+  let settled = false;
+  let rejectReady: (error: Error) => void = () => {};
+  const ready = new Promise<string>((resolve, reject) => {
+    rejectReady = reject;
+    unsubscribe = container.on("server-ready", (_port, url) => {
+      settled = true;
+      unsubscribe();
+      resolve(url);
+    });
+    window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      reject(new Error("The website server did not start within 30 seconds."));
+    }, 30_000);
+  });
+
+  try {
+    const process = await container.spawn("npm", ["run", "dev", "--", "--host", "0.0.0.0"]);
+    void process.exit.then((code) => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      rejectReady(new Error(`The website server stopped before it became ready (exit ${code}).`));
+    });
+    return await ready;
+  } catch (error) {
+    unsubscribe();
+    throw error;
+  }
+}
 
 interface PreviewProps {
   files: FileItem[];
@@ -75,14 +108,22 @@ export default function Preview({ files }: PreviewProps) {
             setStatus("error");
           },
         );
-        const initialFiles = collectProjectFiles(latestFiles.current);
-        initialFiles.set("package.json", createProjectPackageJson(latestFiles.current));
+        const initialFiles = createProjectFiles(latestFiles.current);
+        // WebContainer.mount writes files but does not remove files from a
+        // previous project, so clear competing config formats first.
+        for (const path of [
+          "tailwind.config.js",
+          "tailwind.config.mjs",
+          "tailwind.config.ts",
+          "postcss.config.js",
+          "postcss.config.mjs",
+          "postcss.config.ts",
+        ]) {
+          await container.fs.rm(`/${path}`, { force: true });
+        }
         await container.mount(createProjectTree(latestFiles.current));
         fileCache.current = initialFiles;
 
-        const ready = new Promise<string>((resolve) => {
-          container.on("server-ready", (_port, url) => resolve(url));
-        });
         const install = await installDependencies(container);
         if (install.exitCode !== 0)
           throw new Error(
@@ -91,8 +132,7 @@ export default function Preview({ files }: PreviewProps) {
         installedDependencies.current = getProjectDependencySignature(latestFiles.current);
         if (cancelled) return;
         setStatus("starting");
-        await container.spawn("npm", ["run", "dev", "--", "--host", "0.0.0.0"]);
-        const url = await ready;
+        const url = await startDevServer(container);
         if (cancelled) return;
         setPreviewUrl(url);
         setStatus("ready");
@@ -116,8 +156,7 @@ export default function Preview({ files }: PreviewProps) {
   useEffect(() => {
     const container = containerRef.current;
     if (!container || status !== "ready") return;
-    const nextFiles = collectProjectFiles(files);
-    nextFiles.set("package.json", createProjectPackageJson(files));
+    const nextFiles = createProjectFiles(files);
     const nextDependencySignature = getProjectDependencySignature(files);
     const dependenciesChanged =
       nextDependencySignature !== installedDependencies.current;
@@ -194,9 +233,7 @@ export default function Preview({ files }: PreviewProps) {
               role="alert"
               className="absolute inset-x-3 top-3 rounded-xl border border-red-400/30 bg-slate-950/95 p-4 text-sm text-red-200 shadow-xl backdrop-blur"
             >
-              <div className="mb-1 font-semibold">
-                The website hit a runtime error
-              </div>
+              <div className="mb-1 font-semibold">Preview error</div>
               <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-red-200/90">
                 {error}
               </pre>
