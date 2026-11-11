@@ -3,7 +3,7 @@ import type { ChatMessage, ChatResponse, TemplateResponse } from "../types";
 
 const api = axios.create({
   // Set VITE_API_URL to the deployed backend URL. Keep localhost as the dev default.
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
+  baseURL: import.meta.env.API_URL || "http://localhost:3000",
   headers: {
     "Content-Type": "application/json",
   },
