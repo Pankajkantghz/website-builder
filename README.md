@@ -190,6 +190,7 @@ Open the Vite URL shown in the terminal, usually `http://localhost:5173`.
 - The backend allows 20 requests per IP per minute, limits template prompts to 20,000 characters, chat content to 100,000 characters, and JSON bodies to 256 KB. The in-memory rate limiter is per process; multi-instance deployments should use a shared rate-limit store.
 - The backend listens on port `3000` in `backend/src/index.ts`.
 - The Vite configuration sets COOP/COEP headers required by WebContainers. A deployed frontend host must provide compatible cross-origin isolation headers.
+- If the builder reports that cross-origin isolation is missing, stop and restart the frontend dev server after changing `vite.config.ts`, then open the exact Vite URL printed by `npm run dev` in a fresh tab. You can confirm the headers with `curl -I http://localhost:5173`; the response must include `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. A proxy or deployment must preserve both headers.
 - Generated projects run in a browser-based Node.js environment; packages that need native binaries may not work.
 - Preview **Refresh** reloads the current iframe. Dependency installation happens when the preview starts and again when generated dependencies change.
 - Builder files, build steps, selected file, and latest prompt are saved in `sessionStorage` for the current browser tab session.

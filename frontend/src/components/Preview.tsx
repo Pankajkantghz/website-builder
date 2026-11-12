@@ -89,7 +89,7 @@ export default function Preview({ files }: PreviewProps) {
       try {
         if (!globalThis.crossOriginIsolated) {
           throw new Error(
-            "Live preview needs cross-origin isolation. Restart the frontend dev server after enabling its COOP/COEP headers.",
+            "This page was opened without the required COOP/COEP headers, so WebContainer preview cannot start. Stop the frontend server, restart it from the frontend folder with `npm run dev`, then open the Vite URL it prints (usually http://localhost:5173) in a fresh tab. If you are using a deployed site or a proxy, configure it to pass through Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: require-corp.",
           );
         }
         setStatus("installing");
