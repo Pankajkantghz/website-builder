@@ -20,6 +20,11 @@ const unsupportedBrandIcons: Record<string, string> = {
 
 export function normalizeGeneratedContent(content: string): string {
   const normalized = content
+    // Some model responses wrap file bodies in XML CDATA markers even though
+    // the markers are not part of the source file. Remove either boundary
+    // independently so a missing closing marker cannot break JSX parsing.
+    .replace(/^\s*<!\[CDATA\[\s*/, "")
+    .replace(/\s*\]\]>\s*$/, "")
     .replace(/^\s*```(?:[\w.+-]+)?\s*\n([\s\S]*?)\n```\s*$/, "$1")
     .replace(/\*\*(["'`])([\s\S]*?)\1\*\*/g, "$1$2$1");
 

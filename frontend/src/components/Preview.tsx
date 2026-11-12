@@ -16,6 +16,7 @@ async function startDevServer(container: WebContainer): Promise<string> {
   let unsubscribe = () => {};
   let settled = false;
   let rejectReady: (error: Error) => void = () => {};
+  let serverOutput = "";
   const ready = new Promise<string>((resolve, reject) => {
     rejectReady = reject;
     unsubscribe = container.on("server-ready", (_port, url) => {
@@ -23,21 +24,39 @@ async function startDevServer(container: WebContainer): Promise<string> {
       unsubscribe();
       resolve(url);
     });
-    window.setTimeout(() => {
+    const timeout = window.setTimeout(() => {
       if (settled) return;
       settled = true;
       unsubscribe();
       reject(new Error("The website server did not start within 30 seconds."));
     }, 30_000);
+    void ready.then(
+      () => window.clearTimeout(timeout),
+      () => window.clearTimeout(timeout),
+    );
   });
 
   try {
     const process = await container.spawn("npm", ["run", "dev", "--", "--host", "0.0.0.0"]);
+    const outputDone = process.output.pipeTo(
+      new WritableStream({
+        write(chunk) {
+          serverOutput = `${serverOutput}${chunk}`.slice(-8_000);
+        },
+      }),
+    );
     void process.exit.then((code) => {
       if (settled) return;
       settled = true;
       unsubscribe();
-      rejectReady(new Error(`The website server stopped before it became ready (exit ${code}).`));
+      void outputDone.finally(() => {
+        const details = serverOutput.trim();
+        rejectReady(
+          new Error(
+            `The website server stopped before it became ready (exit ${code}).${details ? `\n${details}` : ""}`,
+          ),
+        );
+      });
     });
     return await ready;
   } catch (error) {

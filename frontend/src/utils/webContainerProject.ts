@@ -9,6 +9,9 @@ const postcssConfig =
 
 function hasTailwindUsage(files: Map<string, string>): boolean {
   return [...files].some(([path, contents]) => {
+    if (/^(?:postcss|tailwind)\.config\.(?:cjs|js|mjs|ts)$/.test(path)) {
+      return /tailwindcss|tailwind/i.test(contents);
+    }
     if (path.endsWith(".css")) {
       return /@tailwind\s|@import\s+["']tailwindcss["']/.test(contents);
     }
