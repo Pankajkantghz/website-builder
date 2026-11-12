@@ -9,6 +9,9 @@ import chatRouter from "./routes/chat.js";
 import templateRouter from "./routes/template.js";
 
 const app = express();
+// The API is deployed behind one hosting proxy. Trust its forwarded client IP
+// so the in-memory rate limiter does not group every visitor under the proxy.
+app.set("trust proxy", 1);
 const allowedOrigins = new Set(
   (process.env.CORS_ORIGINS || "http://localhost:5173")
     .split(",")

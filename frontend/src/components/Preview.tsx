@@ -24,18 +24,7 @@ async function startDevServer(container: WebContainer): Promise<string> {
       unsubscribe();
       resolve(url);
     });
-    const timeout = window.setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      unsubscribe();
-      reject(new Error("The website server did not start within 30 seconds."));
-    }, 30_000);
-    void ready.then(
-      () => window.clearTimeout(timeout),
-      () => window.clearTimeout(timeout),
-    );
   });
-
   try {
     const process = await container.spawn("npm", ["run", "dev", "--", "--host", "0.0.0.0"]);
     const outputDone = process.output.pipeTo(
@@ -44,7 +33,7 @@ async function startDevServer(container: WebContainer): Promise<string> {
           serverOutput = `${serverOutput}${chunk}`.slice(-8_000);
         },
       }),
-    );
+    ).catch(() => undefined);
     void process.exit.then((code) => {
       if (settled) return;
       settled = true;
@@ -58,6 +47,17 @@ async function startDevServer(container: WebContainer): Promise<string> {
         );
       });
     });
+    const timeout = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      process.kill();
+      rejectReady(new Error("The website server did not start within 30 seconds."));
+    }, 30_000);
+    void ready.then(
+      () => window.clearTimeout(timeout),
+      () => window.clearTimeout(timeout),
+    );
     return await ready;
   } catch (error) {
     unsubscribe();
@@ -132,9 +132,11 @@ export default function Preview({ files }: PreviewProps) {
         // previous project, so clear competing config formats first.
         for (const path of [
           "tailwind.config.js",
+          "tailwind.config.cjs",
           "tailwind.config.mjs",
           "tailwind.config.ts",
           "postcss.config.js",
+          "postcss.config.cjs",
           "postcss.config.mjs",
           "postcss.config.ts",
         ]) {
