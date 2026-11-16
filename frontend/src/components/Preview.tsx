@@ -248,11 +248,6 @@ export default function Preview({ files }: PreviewProps) {
           </Button>
         )}
       </div>
-      <p className="border-b border-white/10 px-4 py-2 text-xs leading-5 text-slate-400">
-        AI-generated results may be incomplete or include unintended content.
-        Preview availability also depends on your browser and network. Some
-        projects that rely on external APIs or packages may not run fully here.
-      </p>
       {previewUrl ? (
         <div className="relative min-h-0 flex-1 bg-white">
           <iframe
@@ -289,6 +284,11 @@ export default function Preview({ files }: PreviewProps) {
           </p>
         </div>
       )}
+      <p className="border-t border-white/10 px-4 py-2 text-xs leading-5 text-slate-400">
+        AI-generated results may be incomplete or include unintended content.
+        Preview availability also depends on your browser and network. Some
+        projects that rely on external APIs or packages may not run fully here.
+      </p>
     </div>
   );
 }
