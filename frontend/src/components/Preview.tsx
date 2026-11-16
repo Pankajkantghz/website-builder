@@ -284,7 +284,7 @@ export default function Preview({ files }: PreviewProps) {
           </p>
         </div>
       )}
-      <p className="border-t border-white/10 px-4 py-2 text-xs leading-5 text-slate-400">
+      <p className="border-t border-amber-400/20 bg-amber-400/5 px-4 py-2 text-xs leading-5 text-amber-200/80">
         AI-generated results may be incomplete or include unintended content.
         Preview availability also depends on your browser and network. Some
         projects that rely on external APIs or packages may not run fully here.
