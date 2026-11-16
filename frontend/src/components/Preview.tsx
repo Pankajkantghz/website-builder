@@ -127,7 +127,14 @@ export default function Preview({ files }: PreviewProps) {
             setStatus("error");
           },
         );
-        const initialFiles = createProjectFiles(latestFiles.current);
+        // Keep the mounted files and their dependency signature from the same
+        // snapshot. Files may continue arriving while npm install is running;
+        // recording the newer signature here can otherwise skip the install
+        // for dependencies that were never present in the mounted package.json.
+        const mountedProject = latestFiles.current;
+        const initialFiles = createProjectFiles(mountedProject);
+        const mountedDependencySignature =
+          getProjectDependencySignature(mountedProject);
         // WebContainer.mount writes files but does not remove files from a
         // previous project, so clear competing config formats first.
         for (const path of [
@@ -142,7 +149,7 @@ export default function Preview({ files }: PreviewProps) {
         ]) {
           await container.fs.rm(`/${path}`, { force: true });
         }
-        await container.mount(createProjectTree(latestFiles.current));
+        await container.mount(createProjectTree(mountedProject));
         fileCache.current = initialFiles;
 
         const install = await installDependencies(container);
@@ -150,7 +157,7 @@ export default function Preview({ files }: PreviewProps) {
           throw new Error(
             `Dependency installation failed.${install.output ? `\n${install.output}` : " Check the generated package.json and try again."}`,
           );
-        installedDependencies.current = getProjectDependencySignature(latestFiles.current);
+        installedDependencies.current = mountedDependencySignature;
         if (cancelled) return;
         setStatus("starting");
         const url = await startDevServer(container);
